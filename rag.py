@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 
@@ -152,8 +153,17 @@ def build_context(passages: List[Dict[str, Any]]) -> str:
 def refuse() -> str:
     return REFUSAL_TEXT
 # ----- Local LLM via Ollama (simple) -----
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3.1"
+# ----- LLM Provider -----
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
+
+# Ollama (local or remote)
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1")
+
+# Hugging Face Inference API
+HF_TOKEN = os.getenv("HF_TOKEN", "")
+HF_MODEL = os.getenv("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.2")
+HF_API_URL = os.getenv("HF_API_URL", f"https://api-inference.huggingface.co/models/{HF_MODEL}")
 
 SYSTEM_RULES = """
 You are a constrained philosophical agent representing Existentialism, and you are STRICTLY LIMITED to the provided context passages.
@@ -198,7 +208,40 @@ Context passages (ONLY allowed source):
 {context}
 
 Now respond following the mandatory structure."""
+    
+    # Provider A: Hugging Face
+    if LLM_PROVIDER == "hf":
+        if not HF_TOKEN:
+            return refuse()  # token missing → refuse cleanly
+
+        headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+        payload = {
+            "inputs": prompt,
+            "parameters": {"max_new_tokens": 400, "temperature": 0.2, "return_full_text": False}
+        }
+
+        try:
+            r = requests.post(HF_API_URL, headers=headers, json=payload, timeout=120)
+            r.raise_for_status()
+            data = r.json()
+
+            # HF sometimes returns list[{"generated_text": "..."}]
+            if isinstance(data, list) and data and "generated_text" in data[0]:
+                return data[0]["generated_text"].strip()
+
+            # Or {"generated_text": "..."}
+            if isinstance(data, dict) and "generated_text" in data:
+                return str(data["generated_text"]).strip()
+
+            return refuse()
+        except requests.RequestException:
+            return refuse()
+
+    # Provider B: Ollama (local or remote)
     payload = {"model": OLLAMA_MODEL, "prompt": prompt, "stream": False}
-    r = requests.post(OLLAMA_URL, json=payload, timeout=120)
-    r.raise_for_status()
-    return r.json()["response"].strip()
+    try:
+        r = requests.post(OLLAMA_URL, json=payload, timeout=120)
+        r.raise_for_status()
+        return r.json()["response"].strip()
+    except requests.RequestException:
+        return refuse()
