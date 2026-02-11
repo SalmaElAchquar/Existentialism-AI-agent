@@ -103,8 +103,8 @@ def should_refuse_query(query: str, passages: List[Dict[str, Any]] = None) -> bo
     return False
 
 # --- RAG Settings ---
-TOP_K = 3                 # was 5 (faster)
-MIN_SCORE = 0.35          # was 0.25 (stricter; refuse more)
+TOP_K = 8              # was 5 (faster)
+MIN_SCORE = 0.25          # was 0.25 (stricter; refuse more)
 MIN_PASSAGES = 2
 MAX_CONTEXT_CHARS = 3000  # was 8000 (faster)
 
@@ -126,7 +126,7 @@ def retrieve(query: str, index, chunks, model):
     for score, idx in zip(scores[0], ids[0]):
         if idx == -1:
             continue
-        if float(score) < MIN_SCORE:   # filter weak passages
+        if float(score) < MIN_SCORE:
             continue
         item = chunks[int(idx)]
         results.append({
@@ -136,7 +136,31 @@ def retrieve(query: str, index, chunks, model):
             "page": item["page"],
         })
 
+    # ✅ ADD THIS BLOCK HERE (keyword rescue)
+    key_terms = [t for t in _keywords(query) if len(t) >= 5]
+    if key_terms:
+        for item in chunks:
+            text = item["chunk"].lower()
+            if any(t in text for t in key_terms):
+                results.append({
+                    "score": 1.0,
+                    "chunk": item["chunk"],
+                    "source": item["source"],
+                    "page": item["page"],
+                })
+
+        # de-duplicate + keep best TOP_K
+        seen = set()
+        uniq = []
+        for r in sorted(results, key=lambda x: x["score"], reverse=True):
+            k = (r["source"], r["page"], r["chunk"][:80])
+            if k not in seen:
+                seen.add(k)
+                uniq.append(r)
+        results = uniq[:TOP_K]
+
     return results, best
+
 
 
 def build_context(passages: List[Dict[str, Any]]) -> str:
