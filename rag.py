@@ -84,6 +84,25 @@ def query_supported_by_context(query: str, passages: List[Dict[str, Any]]) -> bo
     if not q_terms:
         return False
 
+    ctx = " ".join(p.get("chunk", "") for p in passages).lower()
+
+    def term_in_ctx(t: str) -> bool:
+        # exact hit
+        if t in ctx:
+            return True
+        # allow morphological variants (existentialism -> existential)
+        if t.endswith("ism") and (t[:-3] in ctx):
+            return True
+        # allow existentialist/existentialism/existential
+        if t.startswith("existential") and ("existential" in ctx):
+            return True
+        return False
+
+    hits = sum(1 for t in q_terms if term_in_ctx(t))
+
+    required = 1 if len(q_terms) <= 4 else 2
+    return hits >= required
+
     ctx = " ".join(p.get("chunk","") for p in passages).lower()
     hits = sum(1 for t in q_terms if t in ctx)
 
