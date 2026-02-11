@@ -87,25 +87,17 @@ def query_supported_by_context(query: str, passages: List[Dict[str, Any]]) -> bo
     ctx = " ".join(p.get("chunk", "") for p in passages).lower()
 
     def term_in_ctx(t: str) -> bool:
-        # exact hit
         if t in ctx:
             return True
-        # allow morphological variants (existentialism -> existential)
         if t.endswith("ism") and (t[:-3] in ctx):
             return True
-        # allow existentialist/existentialism/existential
         if t.startswith("existential") and ("existential" in ctx):
+            return True
+        if t.startswith("abandon") and ("abandon" in ctx):
             return True
         return False
 
     hits = sum(1 for t in q_terms if term_in_ctx(t))
-
-    required = 1 if len(q_terms) <= 4 else 2
-    return hits >= required
-
-    ctx = " ".join(p.get("chunk","") for p in passages).lower()
-    hits = sum(1 for t in q_terms if t in ctx)
-
     required = 1 if len(q_terms) <= 4 else 2
     return hits >= required
 
@@ -124,7 +116,7 @@ def should_refuse_query(query: str, passages: List[Dict[str, Any]] = None) -> bo
 # --- RAG Settings ---
 TOP_K = 8              # was 5 (faster)
 MIN_SCORE = 0.25          # was 0.25 (stricter; refuse more)
-MIN_PASSAGES = 2
+MIN_PASSAGES = 1
 MAX_CONTEXT_CHARS = 3000  # was 8000 (faster)
 
 def load_index():

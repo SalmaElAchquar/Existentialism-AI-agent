@@ -1,5 +1,6 @@
 import streamlit as st
 from rag import (
+    has_banned_terms,
     load_index,
     retrieve,
     build_context,
@@ -189,12 +190,14 @@ query = st.text_input(
 if st.button("Ask") and query.strip():
 
     # Gate 1 — forbidden topics
-    if should_refuse_query(query):
+    if has_banned_terms(query):
         st.error(refuse())
         st.stop()
 
     passages, best = retrieve(query, index, chunks, model)
-
+    st.write("DEBUG passages:", len(passages))
+    if passages:
+        st.write("DEBUG first source:", passages[0]["source"], "p.", passages[0]["page"])
     col1, col2 = st.columns([2, 1])
 
     # Right column — retrieval info
